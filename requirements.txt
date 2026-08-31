@@ -1,0 +1,7 @@
+paddlepaddle
+paddleocr
+pillow
+gradio
+fastapi
+uvicorn
+python-multipart
