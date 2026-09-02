@@ -22,7 +22,7 @@ def main():
         sys.exit(1)
 
     print(f"Loading PaddleOCR (this may download models on first run)...")
-    ocr = PaddleOCR(use_textline_orientation=True, lang="en")
+    ocr = PaddleOCR(use_textline_orientation=True, lang="en", enable_mkldnn=False)
 
     print(f"Running OCR on: {image_path}")
     results = ocr.predict(str(image_path))

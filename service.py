@@ -26,7 +26,7 @@ from paddleocr import PaddleOCR
 app = FastAPI(title="PaddleOCR Service")
 
 print("Loading PaddleOCR model...")
-ocr = PaddleOCR(use_textline_orientation=True, lang="en")
+ocr = PaddleOCR(use_textline_orientation=True, lang="en", enable_mkldnn=False)
 print("Model loaded. Ready to serve requests.")
 
 

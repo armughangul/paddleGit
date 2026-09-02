@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw
 from paddleocr import PaddleOCR
 
 print("Loading PaddleOCR model (first run may download weights)...")
-ocr = PaddleOCR(use_textline_orientation=True, lang="en")
+ocr = PaddleOCR(use_textline_orientation=True, lang="en", enable_mkldnn=False)
 print("Model loaded.")
 
 print("testing PaddleOCR with a sample image...")
