@@ -1,7 +1,4 @@
-paddlepaddle
-paddleocr
-pillow
-gradio
 fastapi
-uvicorn
+uvicorn[standard]
 python-multipart
+google-cloud-vision
