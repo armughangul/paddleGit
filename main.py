@@ -1,15 +1,27 @@
+import json
 import os
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from google.cloud import vision
+from google.oauth2 import service_account
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 CREDENTIALS_PATH = os.path.join(BASE_DIR, "awsummit-f2ce2-5cbe291d4779.json")
-os.environ.setdefault("GOOGLE_APPLICATION_CREDENTIALS", CREDENTIALS_PATH)
+CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+
+if CREDENTIALS_JSON:
+    credentials = service_account.Credentials.from_service_account_info(json.loads(CREDENTIALS_JSON))
+elif os.path.exists(CREDENTIALS_PATH):
+    credentials = service_account.Credentials.from_service_account_file(CREDENTIALS_PATH)
+else:
+    raise RuntimeError(
+        "Google credentials not found. Set the GOOGLE_CREDENTIALS_JSON env var "
+        "or place the service account JSON file next to main.py."
+    )
 
 app = FastAPI(title="Google OCR API")
 
-client = vision.ImageAnnotatorClient()
+client = vision.ImageAnnotatorClient(credentials=credentials)
 
 
 @app.get("/health")
