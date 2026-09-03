@@ -7,16 +7,29 @@ Usage:
 Opens a local Gradio app (default: http://127.0.0.1:7860) where you can
 upload/drag-drop an image and see detected text + confidence + boxes.
 """
+import os
+
+# See service.py for why this is pinned — PaddlePaddle's CPU backend sizes
+# its thread pool off the host's core count, not any container CPU limit.
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("FLAGS_cpu_num_threads", "2")
+
 import gradio as gr
 import numpy as np
 from PIL import Image, ImageDraw
 from paddleocr import PaddleOCR
 
 print("Loading PaddleOCR model (first run may download weights)...")
-ocr = PaddleOCR(use_textline_orientation=True, lang="en", enable_mkldnn=False)
+# See service.py for why doc-orientation/unwarping are disabled and MKLDNN
+# is turned off here.
+ocr = PaddleOCR(
+    use_doc_orientation_classify=False,
+    use_doc_unwarping=False,
+    use_textline_orientation=True,
+    lang="en",
+    enable_mkldnn=False,
+)
 print("Model loaded.")
-
-print("testing PaddleOCR with a sample image...")
 
 def run_ocr(image):
     if image is None:

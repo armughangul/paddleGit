@@ -14,9 +14,19 @@ Endpoints:
                                returns {"blocks": [{"text", "confidence", "box"}]}
 """
 import io
+import os
 import subprocess
 import tempfile
 from pathlib import Path
+
+# PaddlePaddle's CPU backend (MKLDNN/OpenMP) sizes its thread pool off the
+# *host* machine's core count, not any container CPU limit — on a cloud box
+# with far more cores than the container actually gets, this blows up RAM
+# far past what the workload needs (observed: 12GB+ on Railway vs ~3GB
+# locally on a modest Mac). Pin it explicitly. setdefault() so an operator
+# can still override via a real env var without editing code.
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("FLAGS_cpu_num_threads", "2")
 
 import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -26,7 +36,23 @@ from paddleocr import PaddleOCR
 app = FastAPI(title="PaddleOCR Service")
 
 print("Loading PaddleOCR model...")
-ocr = PaddleOCR(use_textline_orientation=True, lang="en", enable_mkldnn=False)
+# Auction-sheet/vehicle-document scans are consistently upright and flat, so
+# the page-level orientation classifier and perspective-unwarping model are
+# dead weight here — each is a separate loaded model with its own inference
+# workspace, not just the few MB its weights take on disk. Cutting these two
+# (of 5 total) measurably reduces both load time and steady-state RAM.
+# use_textline_orientation stays on since individual text lines within an
+# otherwise-upright scan can still run sideways/rotated on some documents.
+# enable_mkldnn=False: MKLDNN/oneDNN's own thread pool and primitive cache is
+# a second, independent contributor to the same host-core-count memory blowup
+# OMP_NUM_THREADS/FLAGS_cpu_num_threads address above — belt and suspenders.
+ocr = PaddleOCR(
+    use_doc_orientation_classify=False,
+    use_doc_unwarping=False,
+    use_textline_orientation=True,
+    lang="en",
+    enable_mkldnn=False,
+)
 print("Model loaded. Ready to serve requests.")
 
 
