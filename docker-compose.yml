@@ -1,7 +1,0 @@
-services:
-  ocr-api:
-    build: .
-    ports:
-      - "8000:8000"
-    volumes:
-      - ./awsummit-f2ce2-5cbe291d4779.json:/app/awsummit-f2ce2-5cbe291d4779.json:ro

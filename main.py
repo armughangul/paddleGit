@@ -1,50 +1,76 @@
-import json
+"""
+Web UI for testing PaddleOCR.
+
+Usage:
+    python app.py
+
+Opens a local Gradio app (default: http://127.0.0.1:7860) where you can
+upload/drag-drop an image and see detected text + confidence + boxes.
+"""
 import os
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
-from google.cloud import vision
-from google.oauth2 import service_account
+# See service.py for why this is pinned — PaddlePaddle's CPU backend sizes
+# its thread pool off the host's core count, not any container CPU limit.
+os.environ.setdefault("OMP_NUM_THREADS", "2")
+os.environ.setdefault("FLAGS_cpu_num_threads", "2")
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CREDENTIALS_PATH = os.path.join(BASE_DIR, "awsummit-f2ce2-5cbe291d4779.json")
-CREDENTIALS_JSON = os.environ.get("GOOGLE_CREDENTIALS_JSON")
+import gradio as gr
+import numpy as np
+from PIL import Image, ImageDraw
+from paddleocr import PaddleOCR
 
-if CREDENTIALS_JSON:
-    credentials = service_account.Credentials.from_service_account_info(json.loads(CREDENTIALS_JSON))
-elif os.path.exists(CREDENTIALS_PATH):
-    credentials = service_account.Credentials.from_service_account_file(CREDENTIALS_PATH)
-else:
-    raise RuntimeError(
-        "Google credentials not found. Set the GOOGLE_CREDENTIALS_JSON env var "
-        "or place the service account JSON file next to main.py."
-    )
+print("Loading PaddleOCR model (first run may download weights)...")
+# See service.py for why doc-orientation/unwarping are disabled and MKLDNN
+# is turned off here.
+ocr = PaddleOCR(
+    use_doc_orientation_classify=False,
+    use_doc_unwarping=False,
+    use_textline_orientation=True,
+    lang="en",
+    enable_mkldnn=False,
+)
+print("Model loaded.")
 
-app = FastAPI(title="Google OCR API")
+def run_ocr(image):
+    if image is None:
+        return None, "No image provided."
 
-client = vision.ImageAnnotatorClient(credentials=credentials)
+    # gradio gives a numpy array (RGB); PaddleOCR accepts numpy arrays directly.
+    results = ocr.predict(image)
+
+    if not results or len(results[0]["rec_texts"]) == 0:
+        return Image.fromarray(image), "No text detected."
+
+    res = results[0]
+    texts = res["rec_texts"]
+    scores = res["rec_scores"]
+    boxes = res["rec_polys"]
+
+    # Draw boxes on a copy of the image.
+    img = Image.fromarray(image).convert("RGB")
+    draw = ImageDraw.Draw(img)
+    for box in boxes:
+        points = [tuple(p) for p in box]
+        draw.polygon(points, outline="red", width=2)
+
+    # Build a readable text report.
+    lines = [f"[{score:.3f}]  {text}" for text, score in zip(texts, scores)]
+    report = f"Detected {len(texts)} line(s):\n\n" + "\n".join(lines)
+
+    return img, report
 
 
-@app.get("/health")
-def health():
-    return {"status": "ok"}
+demo = gr.Interface(
+    fn=run_ocr,
+    inputs=gr.Image(type="numpy", label="Upload or drag an image"),
+    outputs=[
+        gr.Image(type="pil", label="Detected text boxes"),
+        gr.Textbox(label="Recognized text", lines=15),
+    ],
+    title="PaddleOCR Demo",
+    description="Upload an image to test PaddleOCR's text detection + recognition.",
+    examples=["images/sample.png"],
+)
 
-
-@app.post("/extract-text")
-async def extract_text(file: UploadFile = File(...)):
-    if not file.content_type or not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Uploaded file must be an image")
-
-    content = await file.read()
-    if not content:
-        raise HTTPException(status_code=400, detail="Uploaded file is empty")
-
-    image = vision.Image(content=content)
-    image_context = vision.ImageContext(language_hints=["ja", "en"])
-    response = client.document_text_detection(image=image, image_context=image_context)
-
-    if response.error.message:
-        raise HTTPException(status_code=502, detail=f"Vision API error: {response.error.message}")
-
-    extracted_text = response.full_text_annotation.text if response.full_text_annotation else ""
-
-    return {"filename": file.filename, "text": extracted_text}
+if __name__ == "__main__":
+    demo.launch()
